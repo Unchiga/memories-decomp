@@ -513,6 +513,57 @@ the same spirit: `D_8009B0C8` is read once and used for both the store and the
 `& 0xFF` test, and `D_8009B0D8` is written as a word but read back as a byte, so
 that read has to be `*(volatile u8 *)&D_8009B0D8`.
 
+### Argument-emission order decides what the delay slot swallows
+
+A fourth residual class, distinct from the schedule, allocation and block-layout
+ones. The instructions are right, the registers are right, and the only fault is
+which of a call's argument set-ups ends up last before the `jal` — because `dbr`
+takes whatever is last, without preference.
+
+`func_8004B854` (`0x8004B854`) is the worked example, at 47 of 47 instructions
+with every one byte-exact except this window:
+
+```
+target                              candidate
+addiu $a2, $zero, 0x1000            lui   $a3, %hi(func_8004B734)
+lui   $a3, %hi(func_8004B734)       addiu $a3, $a3, %lo(...)
+jal   func_80073860                 jal   func_80073860
+addiu $a3, $a3, %lo(...)            addiu $a2, $zero, 0x1000
+```
+
+The same four instructions. The target sets up `$a2` before `$a3`, so the delay
+slot takes `$a3`'s `addiu`; GCC sets up `$a3` first, so it takes `$a2`'s `li`.
+
+Nothing in the source reaches it. Binding the callback to a `register` local —
+which is `mem_card_init_io_events.c`'s own idiom for exactly this kind of call —
+pinning that local to `$7`, and additionally binding `0x1000` to a local pinned
+to `$6`, all leave the order unchanged. `gcc_2_8_1_g0_split` is worse in a
+different way: it hoists `&D_8009B458` into `$s0` and the body drops to 45.
+
+Worth recognising early, because it looks like a scheduling residual and is not:
+if the two candidate instructions either side of a `jal` are the *same pair* as
+the target's in the opposite order, the pass to blame is argument expansion, and
+no amount of scheduling or pinning will move it.
+
+#### The goto lever has a limit
+
+The `goto` that fixes block layout for `func_80013B04` and
+`Duel_GetTerrainBoost` does not always reach it. `func_8001D5B4`
+(`0x8001D5B4`) places its `return 1` block early — immediately after a call
+test, as the branch's fall-through — with two later comparisons branching
+*backwards* into it. GCC places it at the end, branches forwards, and inverts
+the guard from `beqz` to `bnez` to do it. Three spellings produce byte-identical
+output: an early `if (...) return 1;`, a `goto` past a labelled `return 1`, and
+the same with a shared store tail expanded into two explicit pairs. GCC's
+cross-jumping additionally merges `D_8009B160 = 3; return 1;` into that shared
+tail, where the target keeps it inline.
+
+All six of its terminal rows record the consequence rather than the cause:
+`+0x10`, `03004010 != 05004010`, the same `beqz $v0` two instructions further
+along. That offset is the size of the block the guard skips, so a row like it
+should be read as "my early-exit block is the wrong length", not as a codegen
+difference in the guard itself.
+
 ### Register pins
 
 Issue #5 accepts `register` variables pinned to a hard register for functions
