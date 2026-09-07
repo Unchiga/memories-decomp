@@ -4243,6 +4243,12 @@
       "source": "src/game/sound_voice_selection.c"
     },
     {
+      "address": "0x80047DB0",
+      "profile": "gcc_2_8_1_g0",
+      "size": "0x114",
+      "source": "src/game/func_80047DB0.c"
+    },
+    {
       "address": "0x80047EC4",
       "profile": "gcc_2_8_1_g0",
       "size": "0x74",
@@ -4271,6 +4277,12 @@
       "profile": "gcc_2_8_1_g0_keep_large_ori",
       "size": "0x108",
       "source": "src/game/func_80048920.c"
+    },
+    {
+      "address": "0x80048A28",
+      "profile": "gcc_2_8_1_g0",
+      "size": "0x1E4",
+      "source": "src/game/func_80048A28.c"
     },
     {
       "address": "0x80048C0C",
