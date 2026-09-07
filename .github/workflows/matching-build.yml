@@ -93,6 +93,11 @@ jobs:
           make compiler-281-prebuilt
           make check-build-tools
 
+      - name: Exercise incremental cache regressions
+        run: |
+          tools/environments/python/bin/python -m unittest discover \
+            -s tools/project/tests -p 'test_*incremental*.py' -v
+
       - name: Perform clean matching build
         run: |
           make clean
@@ -101,6 +106,15 @@ jobs:
             84a54ed74f3d0edd6d81380839f7e4ef5bfb21ecea18be9a062bd6bfa5a45c88 \
             tmp/project-build/SLUS_014.11 \
             | sha256sum --check --strict
+
+      - name: Exercise the worker incremental loop
+        run: |
+          tools/environments/python/bin/python tools/project/build_incremental.py --seed-existing
+          make match-incremental
+          output="$(make match-incremental)"
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" | grep -E '^incremental split: reused [0-9]+ generated files$'
+          printf '%s\n' "$output" | grep -E '^incremental build: rebuilt=0 reused=([0-9]+) retained=\1 materialized=0 '
 
       - name: Report generated global usage drift
         continue-on-error: true
