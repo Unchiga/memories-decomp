@@ -105,6 +105,7 @@ Names that say what something IS in the game.
 | 0x80038BF0 | `Text_HandleChoiceCommand` | matching C |
 | 0x800393B0 | `TextBox_BuildStep` | idb2018 |
 | 0x80039934 | `TextBox_SetPos` | idb2018 |
+| 0x80039AAC | `DisplayObjectFade_MarkInitialized` | matching C |
 | 0x80039D64 | `DuelEffect_ProcessEntries` | matching C |
 | 0x8003B744 | `Text_LookupString` | idb2018 |
 | 0x8003B9BC | `Main_InitFreeDuelMenu` | live |
@@ -125,6 +126,7 @@ Names that say what something IS in the game.
 | 0x8003F7D4 | `SaveData_RequestLoad` | matching C |
 | 0x8003F810 | `SaveData_PollLoad` | matching C |
 | 0x8003F87C | `SaveData_RequestWrite` | matching C |
+| 0x8003FE80 | `Sound_InitFrontend` | matching C |
 | 0x8003FEE0 | `SD_SEPlayFull` | live |
 | 0x80040390 | `DisplayObject_ResetPool` | matching C |
 | 0x80043230 | `Widget_SlideSine` | idb2018 |
