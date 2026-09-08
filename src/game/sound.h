@@ -421,6 +421,7 @@ s32 SD_EnqueueCommand(SDCommand *);
 void SD_UpdateFades(void);
 void SD_UpdateRuntime(void);
 void SD_BGMPlay(u32);
+void SD_SEPlayFull(u32);
 void SD_BGMFadeOut(void);
 void SD_BGMFadeOutWithStep(s32);
 void SD_KeyOffVoiceSlots(void);
