@@ -136,6 +136,150 @@ check, so GCC emitted a full checked `div` against `$s5`. That is an ordinary
 `/` in the source on a value the compiler cannot prove non-zero - it is not an
 SDK helper and should not be written as one.
 
+## What the function is for
+
+The three layers together read as a **separation step**: two records are pushed
+apart when they are closer than their combined half-extents.
+
+1. Eight clamps produce, for each of the two records, four half-extent values -
+   each a halfword field divided by two and clamped upward against argument two.
+   So argument two is a minimum extent.
+2. Three delta pairs subtract each record's position fields from a reference
+   point taken from `D_800F56F0`, with the first and third components offset by
+   the `rcos` and `rsin` of `D_8009B47A + 0x800` scaled by argument two. That is
+   a heading-relative offset applied to the reference point.
+3. Two `SquareRoot0` calls turn the x and z components of those deltas into a
+   distance per record.
+
+Then, per record selected by the index in `$fp`:
+
+```
+v0 = (limit - dist) << 12
+a1 = v0 / limit                 (checked div - hence break 7 and break 6)
+s7 = (delta_x * a1) / 4096      negated when a guard value is positive
+s6 = (delta_z * a1) / 4096      likewise
+```
+
+`(limit - dist) / limit` in 12-bit fixed point is the fraction of the overlap,
+and multiplying the delta by it and shifting back by 12 gives the push-out
+vector. The `bgez` / `addiu 0xFFF` / `sra 12` triple around each multiply is the
+signed divide by 4096 that the fixed-point convention needs, so those must be
+written as `/ 4096` on a signed value rather than `>> 12`.
+
+The guarded `negu` after each is a sign flip chosen by a separate stored value,
+which is what makes the push symmetric: one record moves one way and the other
+the opposite way.
+
+**The division is by the distance limit, which the compiler cannot prove
+non-zero**, which is exactly why `break 7` and `break 6` are present. A
+reconstruction that guards the divisor itself, or that uses a helper, will not
+emit them.
+
+## The stack layout, and the guard that gates the push
+
+The eight destinations are eight `s32 x[2]` arrays, indexed later by the record
+selector in `$fp`. Their final contents, with the clamp order corrected for the
+copy-down:
+
+| slot | holds |
+| --- | --- |
+| `0x10` | clamp of field `0xDCE` |
+| `0x18` | clamp of field `0xDC8` |
+| `0x20` | clamp of field `0xDCA` |
+| `0x28` | clamp of field `0xDCC` |
+| `0x30` | delta from the reference x, offset by the `rcos` term |
+| `0x38` | delta from the reference y |
+| `0x40` | delta from the reference z, offset by the `rsin` term |
+| `0x48` | the `SquareRoot0` distance |
+
+Reading the indexed section with those names, the per-record body is
+
+```c
+limit = a3[i];
+if (limit < a1[i]) limit = a1[i];
+if (limit < a0[i]) limit = a0[i];          /* max of three extents */
+
+dy = d1[i];
+if (dy < 0) dy = -dy;
+if (a2[i] < dy) goto next;                 /* outside the height band */
+
+dist = d[i];
+if (dist < 0) goto next;
+if (dist >= limit) goto next;              /* no overlap */
+```
+
+so the push only happens when the horizontal distance is inside the largest of
+three extents **and** the vertical delta is within a fourth. That is why there
+are four clamped extents rather than one: three feed a maximum and the fourth is
+a separate height test.
+
+Two further gates follow before the division - one on a value the loop clears at
+entry and one on the first argument - so the first argument is a mode flag
+rather than data.
+
+## The whole thing is a two-iteration loop, and it recurses
+
+The body from `0x80051744` to `0x800519B0` is a loop: `$fp` starts at zero, the
+tail does `addiu $fp,$fp,1` and `slti $v0,$fp,0x2` and branches back. So every
+indexed array is walked for record 0 then record 1.
+
+The epilogue then does something the rest of the decode did not predict:
+
+```
+lw   $t2, 0x98(sp)          the third argument
+slti $v0, $t2, 0x3
+beqz $v0, .L80051A14
+lw   $a1, 0x94(sp)
+jal  func_80051350          <- itself
+addu $a2, $t2, $zero
+```
+
+**The function is recursive, and its third argument is a depth counter capped at
+three.** The counter is incremented once in the loop preheader, not per
+iteration, and the recursion is additionally gated on the first argument and on
+a separate hit counter kept at `0x58(sp)`. So the shape is
+
+```c
+s32 func_80051350(s32 mode, s32 min_extent, s32 depth)
+{
+    s32 moved = 0;        /* $s1, and the return value */
+    s32 hits = 0;         /* 0x58(sp) */
+
+    depth = depth + 1;
+    for (i = 0; i < 2; i++) {
+        ...
+    }
+    if (mode != 0 && moved != 0) {
+        Model_UpdateViewMetrics(0);
+    }
+    if (hits != 0 && mode != 0 && depth < 3) {
+        func_80051350(mode, min_extent, depth);
+    }
+    return moved;
+}
+```
+
+That changes the reading of the first argument too: it gates both the
+`Model_UpdateViewMetrics` call and the recursion, so it is a "may act" flag
+rather than a selector.
+
+The push itself is applied at `0x80051974` as `D_800F56F0[0] += s7` and
+`rec->+0x8 += s6`, which is the resolve step; `$s1` is set from the limit when a
+record is skipped, so the return value reports the largest extent considered.
+
+**Still undecoded:** the vector block between `0x80051868` and `0x80051930`. It
+multiplies pairs drawn from `D_800F56F0` at `+0x8`, `+0xC` and `+0x14`, squares
+two differences, feeds a third `SquareRoot0`, and divides by its result under
+the same checked-division traps. It also maintains `D_8009AF98` as a countdown
+from `0x1E` and `D_8009AF99` as a sign, which look like a shake or recoil timer
+rather than part of the separation.
+
+One packing detail to settle before writing that part: the record's word at
+`+0xDC0` is read whole and masked with `0xFFFFFF`, while the byte at `+0xDC3` is
+read separately with `lbu`. On little-endian that byte is the top of the same
+word, so the source has both a word and a byte view of it - writing `w >> 24`
+would produce a shift where the target has a load.
+
 ## Order of work for the first draft
 
 1. The eight clamps, which are a third of the body and entirely mechanical.
