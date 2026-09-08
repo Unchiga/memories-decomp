@@ -5133,3 +5133,25 @@ top of its block wherever the source writes it, so this lever never applies to
 one. That now holds on three functions - the scratchpad pointer here, the slide
 constant in `func_800283F4`, and the loop-invariant address in
 `func_80012E5C`.
+
+## A callee's base pointer can reveal a false whole-function lifetime
+
+`func_80056828` (341 instructions) had a hand-transcribed candidate that saved
+`s0` through `s7`, while retail saves only `s0` through `s6`. The excess came
+from case 8: the fourth argument to `func_8004DC38` had been reconstructed with
+the player index as its first argument, which kept the player live across the
+largest loop. Retail passes the per-player record pointer. Correcting that call
+removed the extra saved register and reproduced the target's 56-byte frame.
+
+The same case exposed three semantic details that instruction count alone had
+hidden. The callback loaded from `D_80010000[3]` or `[4]` starts four bytes into
+the loaded object, the timestamp is reduced modulo 1000, and the current player
+is written to the GP-relative byte `D_8009AFA0`. Pinning the record, callback
+argument, loop cursor and halfword argument to `s2`, `s1`, `s3` and `s5`
+respectively then reproduced retail's register roles throughout the case.
+
+The durable candidate now compiles to 341/341 instructions with
+`gcc_2_8_1_g8_no_split`, at opcode distance 24 and 291 differing linked words.
+It replaces the 75-instruction automated sketch. The remaining work is centered
+on the state dispatch, case 0's eager default pointer, case 3's loop shape, and
+common-tail scheduling rather than missing behavior.
