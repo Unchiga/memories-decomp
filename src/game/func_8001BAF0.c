@@ -114,7 +114,7 @@ next:
             {
                 s32 k;
 
-                k = D_8009B1D5 * 5;
+                k = D_8009B1D5 * HAND_SIZE;
                 id = *(u8 *)((j + k) + (s32)tbl);
             }
             spawned = slot->base;
@@ -137,4 +137,3 @@ next:
         goto next;
     }
 }
-
