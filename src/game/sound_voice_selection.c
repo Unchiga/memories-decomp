@@ -2,6 +2,7 @@
 #include "../psyq/libspu.h"
 #include "sound.h"
 #include "sound_output_state.h"
+#include "sound_voice_selection.h"
 
 extern void func_80047788(u16);
 extern void func_8004763C(void);
@@ -202,7 +203,6 @@ void func_80047CC4(s32 value)
 }
 
 extern void func_800464F0(void);
-extern void func_80047C70(s32);
 
 void func_80047DB0(s32 arg)
 {
