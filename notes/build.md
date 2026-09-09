@@ -289,6 +289,43 @@ each object, because that is the one layout mistake the byte-exact comparison
 cannot catch: an object nobody places is not loaded, the blob keeps supplying
 the original bytes, and the build still matches.
 
+### The small-data region
+
+`.data` runs to 0x8009AF08 and `.sdata` from there to 0x8009B090, which is
+where `_gp` points; the template says so, with that tail declared as `sdata`
+blob chunks rather than `data` ones. The ordering is what makes ownership
+possible at all: Splat emits a segment's whole `.data` list before its
+`.sdata` list, so a unit owning small data in the middle of a `data` blob
+would land after every byte of it. Declared as small data, blobs and owning
+units interleave in address order.
+
+Small data goes back into the **matched translation unit that owns it**, not
+into a data-only unit: at `-G8` a definition of eight bytes or fewer lands in
+`.sdata` by itself, and a text segment claims no small-data section.
+`duel_trap_resolution.c` owns the six trap thresholds and `duel_card_effects.c`
+the two life-point tables this way.
+
+**The consumer's addressing form says whether it owns the symbol.** At `-G8`
+the assembler resolves a small global `%gp_rel` - one instruction - only in the
+translation unit that *defines* it; everywhere else it is `lui %hi` + `%lo`,
+two. So a file that reaches a small symbol through the two-instruction form did
+not define it in retail, and moving the definition there makes its text four
+bytes shorter. `duel_magic_effect_dispatch.c` reads the `"%d\n"` trace format
+at 0x8009AF40 that way, so that symbol belongs to some other unit and the blob
+keeps it; `duel_trap_resolution.c` and `duel_card_effects.c` reach theirs
+gp-relative, which is why the definitions land there and the build stays
+byte-exact. The failure is loud but indirect: the shortened function shifts
+every jump-table entry after it.
+
+**A `sdata` blob chunk stops at its last non-zero symbol.** Trailing zero
+bytes are padding to spimdisasm and it does not emit them, so a chunk is
+shorter than the range it covers and everything after it starts too early. The
+fix is a `pad` subsegment whose *address is where the emitted content actually
+ends*, not the nominal boundary: `initialized_data_8009af2a` covers six bytes
+but emits four, so `- [0x8b72e, pad]` before the next entry makes up the
+difference. A missing pad shows up as a two-byte shift in every `%gp_rel`
+reference after it, and the build's size check catches the rest.
+
 ## Exact baseline build
 
 ```sh
