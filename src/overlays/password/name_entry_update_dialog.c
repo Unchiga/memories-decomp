@@ -38,7 +38,6 @@ extern void func_80043230(Caret *, s32, s32, s32);
 extern void func_80035B7C(DuelEffectChannel *);
 extern void func_80039934(DuelEffectChannel *, s32, s32);
 extern void func_80015B00(void);
-extern Caret *func_80042B40(s32);
 extern void func_8003BC40(u8 *, u8 *, s32);
 extern s32 NameEntry_AdjustLength(s32, s32);
 
@@ -155,7 +154,7 @@ void NameEntry_UpdateDialog(void)
         return;
     }
     if ((flags & 0x80) != 0) {
-        caret = func_80042B40(6);
+        caret = (Caret *)func_80042B40(6);
         if (caret == 0) {
             return;
         }
