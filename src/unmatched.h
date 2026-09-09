@@ -196,4 +196,36 @@ extern u16 D_8009B162;   /* nine declarers  */
 extern u16 D_8009B23A;   /* eight declarers */
 extern u8 D_8009B2EB;    /* six declarers   */
 
+/* Nothing in the tree calls this one. Both consumers only take its address,
+ * to install it in a display object's +0x4C slot: dialog_transition.c stores
+ * it twice, once through (s32) and once through (u8 *), and
+ * overworld/set_location.c stores it as a void *. No C source invokes +0x4C,
+ * so whatever reads that slot back is still generated assembly.
+ *
+ * That means its arity is NOT established, and the (void) here is the form
+ * set_location.c already used rather than a claim. It is safe precisely
+ * because there are no call sites for it to be wrong at -- taking a
+ * function's address does not depend on its signature. If a caller of +0x4C
+ * is ever matched and passes an argument, this declaration is what has to
+ * change, and dialog_transition.c's unprototyped `extern void
+ * func_80042C08();` was quietly saying the same thing. */
+void func_80042C08(void);
+
+/* Two more of the same kind, found by asking which unmatched functions are
+ * never called rather than which are declared oddly.
+ *
+ * func_80035E20 goes into the SAME +0x4C slot, in func_800391E4.c. That slot
+ * holds at least two unmatched callbacks, which is the reason none of their
+ * arities are established: the code that reads +0x4C back and calls it has
+ * not been matched, so nothing in C has ever had to state their arguments.
+ *
+ * func_80067220 is not a callback at all -- func_800608B8.c returns its
+ * address as an s32 -- but it lands in the same place for the same reason.
+ *
+ * Both were spelled without a prototype by their consumers, which is the
+ * honest form for a function nobody calls. They keep a declared return type
+ * here because their consumers cast the address, not the result. */
+s32 func_80035E20();
+int func_80067220();
+
 #endif
