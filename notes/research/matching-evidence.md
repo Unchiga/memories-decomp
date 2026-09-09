@@ -6602,3 +6602,86 @@ never appears at all. And it cannot see a guard macro that switches a header
 declaration off, so deliberate duplication and accidental duplication look
 identical to it and the `save_data` pair must be read by hand. A first pass of
 mine got two of those three wrong and concluded the class was empty.
+
+## A caller may pass an argument the matched callee does not take
+
+`func_80049C40` is matched, exactly, with `gcc_2_8_1_g0`, and its definition in
+`sound_secondary_playback.c` is:
+
+    void func_80049C40(void)
+
+The body reads `D_8009B458` and no parameter. Yet all three of its callers
+declare it as taking one, and pass one:
+
+    extern void func_80049C40(s16 a0);   func_80049010.c
+    extern void func_80049C40(s32);      sound_output.c
+    extern void func_80049C40(s16);      sound_runtime.c
+
+    func_80049C40(g_SDValue->field_157E);
+
+That reads like three files getting the same prototype wrong, and it is the
+opposite. Retail's call sites compute `g_SDValue->field_157E` and put it in
+`$a0` before the call; the callee ignores it. The caller's declaration is the
+only thing keeping that computation alive.
+
+Measured, by making `sound_runtime.c` agree with the definition -- declaration
+to `void (void)` and the call to `func_80049C40()`, which is exactly what a
+#2495 sweep would do:
+
+    error: rebuilt executable has size 0x1d07f0, expected 0x1d0800
+
+Sixteen bytes, four instructions, from one call site. Dropping the argument
+does not just remove the argument move: the whole `g_SDValue->field_157E` load
+chain becomes dead and GCC deletes it too.
+
+So "the definition takes `void`" is not a reason to correct a caller that
+passes something. The two questions are separate: what the callee reads, and
+what the retail call site sets up. This is the mirror of the
+`func_8004036C`/`func_8004CB0C` case, where a caller passes *no* argument to a
+function that takes one; the same rule covers both, which is that a call site's
+argument list is retail's, not the callee's.
+
+Before unifying any prototype under #2495, check whether the callers agree with
+each other rather than whether they agree with the definition. Here all three
+agree that there is one argument, and only disagree about its width -- `s16`
+against `s32` -- which is the part that is actually open.
+
+### Measured: the same holds for func_80049CB0 and func_800498F8, three ways
+
+The `func_80049C40` entry above guessed that its two neighbours in the same
+sound files were load-bearing for the same reason. They are, and the three
+measurements fail differently, which is worth having on record because only
+one of the three looks like the failure you would expect.
+
+`func_80049CB0`, dropping `g_SDValue->field_157E` at `sound_output.c`:
+
+    error: rebuilt executable has size 0x1d07f4, expected 0x1d0800
+
+Twelve bytes. Same shape as `func_80049C40`: the argument's load chain dies
+with it.
+
+`func_800498F8`, dropping `value` at `sound_output.c`:
+
+    ld: section .initialized_data VMA [800906e0,8009b08f]
+        overlaps section .text VMA [800129d8,800906e3]
+
+Text got *longer*, not shorter, and ran into the next section. Removing an
+argument is not reliably a removal: it changes what the register allocator
+does with the surrounding code, and here it cost four bytes rather than
+saving any.
+
+`func_800498F8`, dropping the CONSTANT `0` at `func_80049010.c`:
+
+    error: mismatch at file offset 0x398b4, VRAM 0x800490b4:
+        expected 0x21, got 0x00
+
+Same size, one instruction changed: the `addu` that materialised `$a0` became
+a `nop`. This is the important one. The argument here costs nothing to
+compute, so there is no dead load chain to lose, and the edit still breaks the
+match. What the declaration preserves is the *call sequence*, not the expense
+of the value -- retail sets `$a0` before this call and the C has to as well.
+
+So the rule does not depend on the argument being interesting. Four measured
+call sites across three functions now, and the failure was a shrink, a growth
+and an in-place substitution respectively; a sweep that only watched the size
+would have caught two of the three.
