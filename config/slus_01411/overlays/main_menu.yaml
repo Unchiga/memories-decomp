@@ -80,8 +80,7 @@ segments:
       - [0x3514, c, overlays/main_menu/card_stat_comparators]
       - [0x3B2C, c, overlays/main_menu/trade_offers]
       - [0x416C, c, overlays/main_menu/card_name_count_comparators]
-      - [0x4344, c, overlays/main_menu/trade_draw_helpers]
-      - [0x44D8, c, overlays/main_menu/rebuild_trade_inventory_rows]
+      - [0x4344, c, overlays/main_menu/trade_screen_helpers]
       - [0x4558, data, overlays/main_menu/data]
 
   - [0x8000]
